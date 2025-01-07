@@ -1,0 +1,178 @@
+---
+title: "Untitled"
+author: "Dospina"
+date: "2024-05-14"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(httr2)
+```
+
+
+```{r}
+lista <- list("A","B","C")
+lista
+```
+```{r}
+lista[[1]]
+```
+```{r}
+lista[[2]]
+```
+
+
+```{r}
+x <- list(list("a",list("b","c")))
+```
+
+```{r}
+x[[1]][[1]]
+```
+```{r}
+x[[1]][[2]][[1]]
+```
+
+```{r}
+x[[1]][[2]][[2]]
+```
+
+```{r}
+library(tidyverse)
+```
+pluck(<nombre de lista general>,<indice1>,
+<indice2>,..,<indicen>)
+```{r}
+pluck(x,1,2,1)
+```
+```{r}
+x |> pluck(1,2,1)
+```
+Funciones anónimas, funciones in-line, funciones lambda.
+```{r}
+(\(x) x^2) (3)
+```
+```{r}
+(\(x) x^2) (c(1,2,3,4,5,6))
+```
+
+```{r}
+library(tidyverse)
+library(httr2)
+```
+
+
+```{r}
+url_clima <- "http://api.weather.gov"
+```
+
+```{r}
+response <- request(url_clima) |>
+  req_url_path_append(
+    'points',
+    '38.8898,-76.9901'
+  )
+response
+```
+
+En resp llamamos la URL completa que creamos, hacemos la consulta e imprimimos usando glimpse()
+```{r}
+resp <- response |> req_perform() |> glimpse()
+resp
+```
+Leemos la información para mirar el contenido, y así, poder hacer consultas más específicas.
+```{r}
+resp |> resp_body_json() 
+```
+
+```{r}
+ciudad <- resp |> resp_body_json()|> pluck('properties','relativeLocation','properties','city')
+ciudad
+```
+```{r}
+estado <- resp |> resp_body_json() |>
+  pluck('properties','relativeLocation','properties','state')
+estado
+```
+
+```{r}
+prediccion_url <- resp |> resp_body_json() |>
+  pluck('properties','forecastHourly')
+prediccion_url
+```
+
+```{r}
+prediccion_resp <- request(prediccion_url) |> req_perform() 
+```
+
+La consulta de forecastHourly guarda la predicción del clima
+hora a hora por los siguientes seis días y 12 horas.
+Por lo tanto hay información de 6 días por 24h y 12 horas del
+séptimo día. Es decir, 6*24+12 = 156 registros.
+
+```{r}
+obj_prediccion <- prediccion_resp |> resp_body_json() |> pluck('properties','periods')
+obj_prediccion
+```
+
+```{r}
+df_prediccion <- obj_prediccion |> map_dfr( \(x) {
+  tibble(
+    hora = x |> pluck('startTime'),
+    temp_F = x |> pluck('temperature'),
+    prob_lluvia = x |> pluck('probabilityOfPrecipitation','value'),
+    pronostico = x |> pluck('shortForecast')
+    )
+  }
+)
+df_prediccion[1:5,]
+```
+
+Reemplazar un elemento en una cadena
+```{r}
+df_prediccion$hora <-  gsub("T"," ",df_prediccion$hora)
+df_prediccion[1:5,]
+```
+Seleccionar una subcadena dentro de una cadena: substr()
+```{r}
+cadena <- "2024-05-21 19:00:00-04:00"
+substr(cadena,1,13)
+```
+
+```{r}
+hora_linea <- substr(df_prediccion$hora,1,13)
+hora_linea <- str_replace_all(hora_linea," ","")
+hora_linea <- str_replace_all(hora_linea,"-","")
+hora_linea
+```
+
+```{r}
+df_linea <- tibble(hora=hora_linea,lluvia=df_prediccion$prob_lluvia)
+df_linea
+```
+
+```{r}
+ggplot(data=df_linea[seq(1,156,1),],aes(x=hora,y=lluvia,group=1))+geom_line()+geom_point()+ggtitle("Variación de la probabilidad de lluvia (%)")
+```
+```{r}
+df_prediccion <- df_prediccion %>% mutate(temp_C=round((temp_F-32)*5/9,1)) %>% select(hora,temp_F,temp_C,everything())
+df_prediccion[1:5,]
+```
+
+
+```{r}
+g <- ggplot(df_prediccion,aes(x=hora, y=temp_C,color=pronostico))
+g+geom_point()
+```
+```{r}
+g <- ggplot(data = df_prediccion) 
+g+geom_bar(mapping = aes(x=pronostico,fill=pronostico,stat="identity"),show.legend=FALSE)+ggtitle("Predicción del clima")+labs(x=NULL,y=NULL)+coord_flip()+theme_bw()
+```
+
